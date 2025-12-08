@@ -1,75 +1,88 @@
 public with sharing class CommunitiesLandingController {
-    // Page load entrypoint: safely forward to the Communities landing page
-    public PageReference forwardToStartPage() {
-        // If your org uses a logging utility, replace System.debug with Logger.error(...)
-        // Optional: Savepoint if you plan DB work later in this method
-        // Savepoint sp = Database.setSavepoint();
+    /*
+     * Custom Labels to avoid hard-coded strings and enable localization:
+     * - Communities_Error_User_Label
+     * - Communities_Landing_NotFound_Label
+     *
+     * (Create them in Setup → Custom Labels)
+     */
 
+    /**
+     * Page load entry point: forwards to Communities landing safely.
+     * Practices:
+     * - try/catch around platform call
+     * - explicit redirect
+     * - sanitized logging (no PII/secrets)
+     * - fallback navigation
+     */
+    public PageReference forwardToStartPage() {
         try {
-            // Primary intent: resolve the Communities landing page
             PageReference target = Network.communitiesLanding();
-            
+
             if (target == null) {
-                // Defensive: handle unexpected nulls gracefully
-                addUserError('We could not find the Communities landing page right now. Please try again later.');
+                addUserError(System.Label.Communities_Landing_NotFound_Label);
                 return fallbackPage();
             }
 
-            // Good practice: explicit redirect to avoid stale view state issues
             target.setRedirect(true);
             return target;
 
         } catch (Exception e) {
-            // Roll back only if you used a Savepoint and did DML
-            // Database.rollback(sp);
-
-            // Developer-grade diagnostics
-            logError('Error forwarding to Communities landing', e);
-
-            // User-friendly message (no internals exposed)
-            addUserError('Something went wrong while opening Communities. Please retry, or contact support.');
-
-            // Fail closed to a safe fallback
+            logError('Forwarding to Communities landing failed', e);
+            addUserError(System.Label.Communities_Error_User_Label);
             return fallbackPage();
-        } finally {
-            // Cleanup if needed: release resources, clear state, etc.
         }
     }
 
     // ----- Helpers -----
 
-    // Centralized user messaging for Visualforce contexts
+    /** Adds a user-visible error (Visualforce). */
     private void addUserError(String message) {
-        // For Visualforce pages
         ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, message));
-        // For Lightning, consider returning an error attribute or using a toast in the client controller
     }
 
-    // Minimal, structured error logging (replace with your org's Logger if available)
+    /** Structured, sanitized error logging to avoid PMD/security flags. */
     private void logError(String context, Exception e) {
-        // Include correlation data (e.g., User Id, Network Id) as needed
-        String diagnostic = String.format(
-            '{0}. ExceptionType={1}, Message={2}, StackTrace={3}, UserId={4}',
-            new List<String>{
-                context,
-                e.getTypeName(),
-                e.getMessage(),
-                e.getStackTraceString(),
-                UserInfo.getUserId()
-            }
+        final String typeName = (e == null) ? 'UnknownException' : e.getTypeName();
+        final String safeMsg  = sanitizeForLog((e == null) ? 'No message' : e.getMessage());
+        final String stackStr = (e == null) ? '' : safeTruncated(e.getStackTraceString(), 2000);
+        final String userId   = UserInfo.getUserId();
+
+        System.debug(LoggingLevel.ERROR,
+            'Context=' + safeTruncated(context, 200) +
+            ', Type=' + typeName +
+            ', Msg=' + safeTruncated(safeMsg, 500) +
+            ', Stack=' + stackStr +
+            ', UserId=' + userId
         );
-        System.debug(LoggingLevel.ERROR, diagnostic);
-
-        // Recommended: send to a custom Logger, Platform Event, or Error__c SObject
-        // Logger.error(context, e);  // if you have a logging framework
     }
 
-    // Safe fallback page (use a known Visualforce page or a neutral home)
+    /** Redact likely secret terms and normalize whitespace for logs. */
+    private String sanitizeForLog(String input) {
+        if (input == null) return '';
+        String s = input.replace('\r', ' ').replace('\n', ' ');
+        List<String> patterns = new List<String>{'password','secret','token','bearer','authorization'};
+        for (String p : patterns) {
+            s = s.replaceAll('(?i)' + p, '[REDACTED]');
+        }
+        return s;
+    }
+
+    /** Keep debug strings within bounds to avoid giant log entries. */
+    private String safeTruncated(String input, Integer maxLen) {
+        if (input == null) return '';
+        Integer m = (maxLen == null || maxLen <= 0) ? 256 : maxLen;
+        return (input.length() > m) ? input.substring(0, m) : input;
+    }
+
+    /** Safe fallback page; avoids null return loops and blank screens. */
     private PageReference fallbackPage() {
-        // Replace with an internal safe landing page:
-        // return Page.Community_Fallback;  // if you have a VF page
-        // As a generic safe default, null means stay on current page showing the error
-        return null;
+        // Prefer a known internal VF page if available:
+        // return Page.Community_Fallback;
+        PageReference home = new PageReference('/home/home.jsp');
+        home.setRedirect(true);
+        return home;
     }
 
-    public CommunitiesLandingController() {}
+    /** Empty, side-effect-free constructor (no DML, no SOQL). */
+    public CommunitiesLandingController() { }
