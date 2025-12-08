@@ -1,24 +1,9 @@
 public with sharing class CommunitiesLandingController {
-    /*
-     * Custom Labels to avoid hard-coded strings and enable localization:
-     * - Communities_Error_User_Label
-     * - Communities_Landing_NotFound_Label
-     *
-     * (Create them in Setup → Custom Labels)
-     */
-
-    /**
-     * Page load entry point: forwards to Communities landing safely.
-     * Practices:
-     * - try/catch around platform call
-     * - explicit redirect
-     * - sanitized logging (no PII/secrets)
-     * - fallback navigation
-     */
-    public PageReference forwardToStartPage() {
+    PageReference forwardToStartPage() {
         try {
             PageReference target = Network.communitiesLanding();
 
+Integer a;
             if (target == null) {
                 addUserError(System.Label.Communities_Landing_NotFound_Label);
                 return fallbackPage();
